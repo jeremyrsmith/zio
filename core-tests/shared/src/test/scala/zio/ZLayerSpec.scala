@@ -56,6 +56,26 @@ object ZLayerSpec extends ZIOBaseSpec {
       ZManaged.make(ref.update(_ :+ acquire3).as(Has(new Module3.Service {})))(_ => ref.update(_ :+ release3))
     }
 
+  type Module4 = Has[Module4.Service]
+
+  object Module4 {
+    trait Service
+  }
+
+  val depLayer4: ZLayer[Module1 with Module3, Nothing, Module4] =
+    ZLayer.fromServices[Module1.Service, Module3.Service, Module4.Service]((_, _) => new Module4.Service {})
+
+  type Module5 = Has[Module5.Service]
+
+  object Module5 {
+    trait Service
+  }
+
+  val depLayer5: ZLayer[Module2 with Module4, Nothing, Module5] =
+    ZLayer.fromServices[Module2.Service, Module4.Service, Module5.Service]((_, _) => new Module5.Service {})
+
+  val taskNeedsEnv: ZIO[Module4 with Module5, Nothing, Int] = ZIO.environment[Module4 with Module5].as(27)
+
   def makeRef: UIO[Ref[Vector[String]]] =
     Ref.make(Vector.empty)
 
@@ -125,6 +145,18 @@ object ZLayerSpec extends ZIOBaseSpec {
           assert(actual.slice(3, 5))(hasSameElements(Vector(release2, release3))) &&
           assert(actual(5))(equalTo(release1))
       } @@ nonFlaky,
+      testM("andThen eliminates provided services from overall input") {
+        for {
+          ref      <- makeRef
+          layer1   = makeLayer1(ref)
+          layer2   = makeLayer2(ref)
+          layer3   = makeLayer3(ref)
+          combined = depLayer4 andThen depLayer5
+          // depLayer5 requires 2 and 4, but gets 4 from depLayer4 and propagates requirement for 2
+          // notice that requirement for Module4 is not propagated to combined, avoiding need for many additional combinators
+          result <- taskNeedsEnv.provideLayer((layer1 ++ layer2 ++ layer3) >>> combined)
+        } yield assert(result)(equalTo(27))
+      },
       testM("finalizers with ++") {
         for {
           ref    <- makeRef

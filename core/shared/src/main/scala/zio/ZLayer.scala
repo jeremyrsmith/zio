@@ -2097,6 +2097,18 @@ object ZLayer {
       ZLayer.identity[RIn] ++ self
   }
 
+  implicit final class ZLayerAndThenOps[RIn, E, ROut](val self: ZLayer[RIn, E, ROut]) extends AnyVal {
+
+    /**
+     * Like `>>>`, but infer the next layer's requirements that are satisfied by this layer, so they don't become
+     * requirements of the resulting layer.
+     */
+    def andThen[E1 >: E, RIn1 <: Has[_], ROut1](
+      that: ZLayer[ROut with RIn1, E1, ROut1]
+    )(implicit ev1: Has.AreHas[RIn, ROut], ev2: Has.AreHas[ROut, RIn1], ev3: Has.AreHas[ROut, ROut1], taggedIn1: Tagged[RIn1], taggedOut: Tagged[ROut], taggedOut1: Tagged[ROut1]): ZLayer[RIn1 with RIn, E1, ROut with ROut1] =
+      self ++ ((self ++ ZLayer.identity[RIn1]) >>> that)
+  }
+
   /**
    * A `MemoMap` memoizes dependencies.
    */
